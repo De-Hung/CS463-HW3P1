@@ -1,35 +1,31 @@
-// SenderSocket.cpp -- CSCE 463/612 HW3 Part 1
 #include "SenderSocket.h"
 #include <stdio.h>
 
-SenderSocket::SenderSocket()
-    : sock(INVALID_SOCKET), connected(false), RTO(DEFAULT_RTO), nextSeq(0)
-{
+// initialize socket
+SenderSocket::SenderSocket() : sock(INVALID_SOCKET), connected(false), RTO(DEFAULT_RTO), nextSeq(0) {
     memset(&server, 0, sizeof(server));
     t0 = std::chrono::steady_clock::now();
 }
 
-SenderSocket::~SenderSocket()
-{
+SenderSocket::~SenderSocket() {
     if (sock != INVALID_SOCKET)
         closesocket(sock);
 }
 
-double SenderSocket::Now() const
-{
+// if program exits prematurely
+double SenderSocket::Now() const {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
-int SenderSocket::Open(const char* targetHost, int port, int senderWindow, LinkProperties* lp)
-{
-    if (connected)
-        return ALREADY_CONNECTED;
+int SenderSocket::Open(const char* targetHost, int port, int senderWindow, LinkProperties* lp) {
+    if (connected) return ALREADY_CONNECTED;
 
-    // ---- resolve host: dotted IP first, then DNS ----
+    // builds destination address
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons((u_short)port);
 
+    // takes in the string as an IP
     DWORD ip = inet_addr(targetHost);
     if (ip == INADDR_NONE) {
         struct hostent* remote = gethostbyname(targetHost);
@@ -38,22 +34,23 @@ int SenderSocket::Open(const char* targetHost, int port, int senderWindow, LinkP
             return INVALID_NAME;
         }
         memcpy(&server.sin_addr, remote->h_addr, remote->h_length);
-    }
-    else {
+    } else {
         server.sin_addr.S_un.S_addr = ip;
     }
 
-    // ---- UDP socket bound to port 0 ----
+    // create and bind UDP socket to port 0
     sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock == INVALID_SOCKET) {
         printf("[%6.3f]\t--> failed socket with %d\n", Now(), WSAGetLastError());
         return FAILED_SEND;
     }
+
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = INADDR_ANY;
     local.sin_port = htons(0);
+
     if (bind(sock, (struct sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
         printf("[%6.3f]\t--> failed bind with %d\n", Now(), WSAGetLastError());
         closesocket(sock);
@@ -61,10 +58,9 @@ int SenderSocket::Open(const char* targetHost, int port, int senderWindow, LinkP
         return FAILED_SEND;
     }
 
-    // ---- build SYN ----
-    // router buffer: never more than W + R packets in flight (R = max retx attempts)
+    // SYN
+    // router buffer
     lp->bufferSize = senderWindow + OTHER_MAX_ATTEMPTS;
-
     SenderSynHeader ssh;
     ssh.sdh.flags.SYN = 1;
     ssh.sdh.seq = 0;
@@ -72,35 +68,30 @@ int SenderSocket::Open(const char* targetHost, int port, int senderWindow, LinkP
 
     ReceiverHeader rh;
     double rtt = 0;
-    int status = SendAndWait("SYN", 0, (const char*)&ssh, sizeof(ssh),
-                             SYN_MAX_ATTEMPTS, true, true, false, rh, rtt);
+    int status = SendAndWait("SYN", 0, (const char*)&ssh, sizeof(ssh), SYN_MAX_ATTEMPTS, true, true, false, rh, rtt);
     if (status != STATUS_OK) {
         closesocket(sock);
         sock = INVALID_SOCKET;
         return status;
     }
 
+    // SYN-ACK
     RTO = 3.0 * rtt;
-    printf("[%6.3f]\t<-- SYN-ACK %d window %d; setting initial RTO to %.3f\n",
-           Now(), rh.ackSeq, rh.recvWnd, RTO);
+    printf("[%6.3f]\t<-- SYN-ACK %d window %d; setting initial RTO to %.3f\n", Now(), rh.ackSeq, rh.recvWnd, RTO);
 
     nextSeq = 0;
     connected = true;
     return STATUS_OK;
 }
 
-int SenderSocket::Send(const char* buf, int bytes)
-{
-    // Part 1: no data transfer yet.
-    if (!connected)
-        return NOT_CONNECTED;
+int SenderSocket::Send(const char* buf, int bytes) {
+    // Placeholder for main
+    if (!connected) return NOT_CONNECTED;
     return STATUS_OK;
 }
 
-int SenderSocket::Close()
-{
-    if (!connected)
-        return NOT_CONNECTED;
+int SenderSocket::Close() {
+    if (!connected) return NOT_CONNECTED;
 
     SenderDataHeader sdh;
     sdh.flags.FIN = 1;
@@ -108,32 +99,23 @@ int SenderSocket::Close()
 
     ReceiverHeader rh;
     double rtt = 0;
-    int status = SendAndWait("FIN", nextSeq, (const char*)&sdh, sizeof(sdh),
-                             OTHER_MAX_ATTEMPTS, false, false, true, rh, rtt);
-    if (status != STATUS_OK)
-        return status;
+    int status = SendAndWait("FIN", nextSeq, (const char*)&sdh, sizeof(sdh), OTHER_MAX_ATTEMPTS, false, false, true, rh, rtt);
+    if (status != STATUS_OK) return status;
 
     printf("[%6.3f]\t<-- FIN-ACK %d window %d\n", Now(), rh.ackSeq, rh.recvWnd);
-
     connected = false;
     closesocket(sock);
     sock = INVALID_SOCKET;
     return STATUS_OK;
 }
 
-int SenderSocket::SendAndWait(const char* name, DWORD seq, const char* pkt, int len,
-                              int maxAttempts, bool printIP, bool wantSYN, bool wantFIN,
-                              ReceiverHeader& rh, double& rtt)
-{
+int SenderSocket::SendAndWait(const char* name, DWORD seq, const char* pkt, int len, int maxAttempts, bool printIP, bool wantSYN, bool wantFIN, ReceiverHeader& rh, double& rtt) {
+    // records when attempt was sent
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
         double sendTime = Now();
 
-        if (printIP)
-            printf("[%6.3f]\t--> %s %d (attempt %d of %d, RTO %.3f) to %s\n",
-                   sendTime, name, seq, attempt, maxAttempts, RTO, inet_ntoa(server.sin_addr));
-        else
-            printf("[%6.3f]\t--> %s %d (attempt %d of %d, RTO %.3f)\n",
-                   sendTime, name, seq, attempt, maxAttempts, RTO);
+        if (printIP) printf("[%6.3f]\t--> %s %d (attempt %d of %d, RTO %.3f) to %s\n", sendTime, name, seq, attempt, maxAttempts, RTO, inet_ntoa(server.sin_addr));
+        else printf("[%6.3f]\t--> %s %d (attempt %d of %d, RTO %.3f)\n", sendTime, name, seq, attempt, maxAttempts, RTO);
 
         if (sendto(sock, pkt, len, 0, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
             printf("[%6.3f]\t--> failed sendto with %d\n", Now(), WSAGetLastError());
@@ -142,11 +124,10 @@ int SenderSocket::SendAndWait(const char* name, DWORD seq, const char* pkt, int 
 
         double deadline = sendTime + RTO;
 
-        // wait for a matching reply until the RTO expires
+        // wait for a matching reply until RTO expires
         while (true) {
             double remaining = deadline - Now();
-            if (remaining <= 0)
-                break;                       // timeout -> retransmit
+            if (remaining <= 0) break;
 
             fd_set fd;
             FD_ZERO(&fd);
@@ -160,24 +141,22 @@ int SenderSocket::SendAndWait(const char* name, DWORD seq, const char* pkt, int 
                 printf("[%6.3f]\t<-- failed recvfrom with %d\n", Now(), WSAGetLastError());
                 return FAILED_RECV;
             }
-            if (ready == 0)
-                break;                       // timeout -> retransmit
+            if (ready == 0) break;
 
             struct sockaddr_in from;
             int fromLen = sizeof(from);
             int bytes = recvfrom(sock, (char*)&rh, sizeof(rh), 0, (struct sockaddr*)&from, &fromLen);
+
             if (bytes == SOCKET_ERROR) {
                 printf("[%6.3f]\t<-- failed recvfrom with %d\n", Now(), WSAGetLastError());
                 return FAILED_RECV;
             }
-            if (bytes != sizeof(ReceiverHeader))
-                continue;                    // malformed; keep waiting
-
+            if (bytes != sizeof(ReceiverHeader)) continue;
             if (rh.flags.ACK && ((wantSYN && rh.flags.SYN) || (wantFIN && rh.flags.FIN))) {
-                rtt = Now() - sendTime;      // measured from the most recent transmission
+                rtt = Now() - sendTime;
                 return STATUS_OK;
             }
-            // otherwise ignore and keep waiting out the RTO
+            // otherwise ignore and keep waiting out RTO
         }
     }
     return TIMEOUT;
