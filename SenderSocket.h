@@ -1,4 +1,3 @@
-// SenderSocket.h  -- CSCE 463/612 HW3 Part 1
 #pragma once
 #include <winsock2.h>
 #include <windows.h>
@@ -6,8 +5,9 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define MAGIC_PORT    22345          // receiver listens on this port
-#define MAX_PKT_SIZE  (1500 - 28)    // maximum UDP packet size accepted by receiver
+#define MAGIC_PORT 22345
+// max UDP packet size
+#define MAX_PKT_SIZE (1500 - 28)
 
 // possible status codes from ss.Open, ss.Send, ss.Close
 #define STATUS_OK          0   // no error
@@ -22,16 +22,15 @@
 #define RETURN_PATH  1
 
 #define MAGIC_PROTOCOL 0x8311AA
-
 #define SYN_MAX_ATTEMPTS   3
 #define OTHER_MAX_ATTEMPTS 5
-#define DEFAULT_RTO        1.0   // seconds, before first RTT measurement
+#define DEFAULT_RTO        1.0
 
 #pragma pack(push, 1)
 
 class Flags {
 public:
-    DWORD reserved : 5;   // must be zero
+    DWORD reserved : 5;     // must be 0
     DWORD SYN : 1;
     DWORD ACK : 1;
     DWORD FIN : 1;
@@ -42,7 +41,7 @@ public:
 class SenderDataHeader {
 public:
     Flags flags;
-    DWORD seq;            // must begin from 0
+    DWORD seq;      // must begin from 0
 };
 
 class LinkProperties {
@@ -79,12 +78,9 @@ public:
     int Close();
 
 private:
-    // Sends pkt, waits up to RTO for a reply with the expected flags; retransmits up to maxAttempts.
-    // On success fills rh and rtt (seconds, measured from the LAST transmission).
-    int SendAndWait(const char* name, DWORD seq, const char* pkt, int len,
-                    int maxAttempts, bool printIP, bool wantSYN, bool wantFIN,
-                    ReceiverHeader& rh, double& rtt);
-
+    // sends pkt, waits up to RTO for a reply with expected flags
+    // success fills rh and rtt
+    int SendAndWait(const char* name, DWORD seq, const char* pkt, int len, int maxAttempts, bool printIP, bool wantSYN, bool wantFIN, ReceiverHeader& rh, double& rtt);
     double Now() const;   // seconds since constructor
 
     SOCKET sock;
