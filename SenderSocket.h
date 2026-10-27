@@ -1,4 +1,6 @@
 #pragma once
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
 #include <winsock2.h>
 #include <windows.h>
 #include <chrono>

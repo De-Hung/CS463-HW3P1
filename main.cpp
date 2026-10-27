@@ -47,13 +47,14 @@ int main(int argc, char** argv) {
 
     // buffer initialized
     printf("Main:\tinitializing DWORD array with 2^%d elements... ", power);
-    DWORD tStart = GetTickCount();
+    auto tInit = std::chrono::steady_clock::now();
 
     UINT64 dwordBufSize = (UINT64)1 << power;
     DWORD* dwordBuf = new DWORD[dwordBufSize];
     for (UINT64 i = 0; i < dwordBufSize; i++) dwordBuf[i] = (DWORD)i;
 
-    printf("done in %d ms\n", (int)(GetTickCount() - tStart));
+    int initMs = (int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - tInit).count();
+    printf("done in %d ms\n", initMs);
 
     // connect
     SenderSocket ss;
